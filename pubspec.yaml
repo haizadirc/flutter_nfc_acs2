@@ -5,13 +5,13 @@ author: Nur Hidayatul Rohani MOKTAR
 homepage: https://github.com/hidayatulrohani94/flutter_nfc_acs
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: ">=2.12.0 <4.0.0"
   flutter: ">=2.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_plugin_android_lifecycle: ^2.0.0
+  flutter_plugin_android_lifecycle: ^2.0.24
 
 dev_dependencies:
   flutter_test:

@@ -1,20 +1,13 @@
 #import "FlutterNfcAcsPlugin.h"
+#if __has_include(<flutter_nfc_acs2/flutter_nfc_acs2-Swift.h>)
+#import <flutter_nfc_acs2/flutter_nfc_acs2-Swift.h>
+#else
+// Support project import headers when completed inside a framework target.
+#import "flutter_nfc_acs2-Swift.h"
+#endif
 
 @implementation FlutterNfcAcsPlugin
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
-  FlutterMethodChannel* channel = [FlutterMethodChannel
-      methodChannelWithName:@"flutter_nfc_acs"
-            binaryMessenger:[registrar messenger]];
-  FlutterNfcAcsPlugin* instance = [[FlutterNfcAcsPlugin alloc] init];
-  [registrar addMethodCallDelegate:instance channel:channel];
+  [FlutterNfcAcsPlugin registerWithRegistrar:registrar];
 }
-
-- (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
-  if ([@"getPlatformVersion" isEqualToString:call.method]) {
-    result([@"iOS " stringByAppendingString:[[UIDevice currentDevice] systemVersion]]);
-  } else {
-    result(FlutterMethodNotImplemented);
-  }
-}
-
 @end

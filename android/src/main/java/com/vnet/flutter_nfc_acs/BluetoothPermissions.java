@@ -10,60 +10,54 @@ import androidx.core.content.ContextCompat;
 import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener;
 
 abstract class BluetoothPermissions implements RequestPermissionsResultListener {
-  // A code we've defined, to identify the permission request.
-  private static final int REQUEST_FINE_LOCATION_PERMISSIONS = 548351319;
+  private static final int REQUEST_BLUETOOTH_PERMISSIONS = 548351319;
 
   @Override
   public boolean onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-    if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
-      int bluetooth_scan_permission = ContextCompat.checkSelfPermission(getActivity().getApplicationContext(), Manifest.permission.BLUETOOTH_SCAN);
-      int bluetooth_connect_permission = ContextCompat.checkSelfPermission(getActivity().getApplicationContext(), Manifest.permission.BLUETOOTH_CONNECT);
-      if(bluetooth_scan_permission == PackageManager.PERMISSION_GRANTED && bluetooth_connect_permission == PackageManager.PERMISSION_GRANTED){
-        afterPermissionsGranted();
-      }else{
-        afterPermissionsDenied();
-      }
-      return true;
-    }else{
-    if (requestCode == REQUEST_FINE_LOCATION_PERMISSIONS) {
-      if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+    if (requestCode == REQUEST_BLUETOOTH_PERMISSIONS) {
+      if (hasPermissions()) {
         afterPermissionsGranted();
       } else {
         afterPermissionsDenied();
       }
       return true;
-    }}
-
+    }
     return false;
   }
 
   void requestPermissions() {
+    Activity activity = getActivity();
+    if (activity == null) return;
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       ActivityCompat.requestPermissions(
-          getActivity(),
+          activity,
           new String[]{
               Manifest.permission.BLUETOOTH_SCAN,
               Manifest.permission.BLUETOOTH_CONNECT,
               Manifest.permission.ACCESS_FINE_LOCATION
           },
-          REQUEST_FINE_LOCATION_PERMISSIONS);
+          REQUEST_BLUETOOTH_PERMISSIONS);
     } else {
       ActivityCompat.requestPermissions(
-          getActivity(),
+          activity,
           new String[]{
               Manifest.permission.ACCESS_FINE_LOCATION
           },
-          REQUEST_FINE_LOCATION_PERMISSIONS);
+          REQUEST_BLUETOOTH_PERMISSIONS);
     }
   }
 
   boolean hasPermissions() {
+    Activity activity = getActivity();
+    if (activity == null) return false;
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      return ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-             ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+      boolean scanOk = ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+      boolean connectOk = ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+      return scanOk && connectOk;
     } else {
-      return ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+      return ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
   }
 

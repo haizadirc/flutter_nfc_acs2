@@ -2,6 +2,10 @@ package com.vnet.flutter_nfc_acs;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanResult;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -29,13 +33,12 @@ class DeviceScanner extends BluetoothPermissions implements StreamHandler {
   DeviceScanner(@NonNull BluetoothAdapter adapter, @NonNull Activity activity) {
     bluetoothAdapter = adapter;
     this.activity = activity;
-    handler = new Handler();
+    handler = new Handler(Looper.getMainLooper());
   }
 
   @Override
   public void onListen(Object arguments, EventSink events) {
     this.events = events;
-    // TODO: Ask for permissions to turn on bluetooth if disabled.
 
     if (!hasPermissions()) {
       requestPermissions();
@@ -51,35 +54,73 @@ class DeviceScanner extends BluetoothPermissions implements StreamHandler {
     events = null;
   }
 
-  /* Device scan callback. */
-  private BluetoothAdapter.LeScanCallback mLeScanCallback = (device, rssi, scanRecord) -> {
-    if (events != null) {
-      new Handler(Looper.getMainLooper()).post(() -> {
-        if (!btDevices.containsKey(device.getAddress())) {
-          btDevices.put(device.getAddress(), device.getName());
-          events.success(btDevices);
-        }
-      });
-    } else {
-      Log.w(TAG, "Could not output devices, because the event sink was null");
+  private final ScanCallback scanCallback = new ScanCallback() {
+    @Override
+    public void onScanResult(int callbackType, ScanResult result) {
+      if (result == null || result.getDevice() == null) return;
+      BluetoothDevice device = result.getDevice();
+      String address = device.getAddress();
+      String name = device.getName();
+
+      if (events != null) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+          if (btDevices != null && address != null) {
+            boolean isNew = !btDevices.containsKey(address);
+            btDevices.put(address, name != null ? name : "Unknown Device");
+            if (isNew && events != null) {
+              events.success(new HashMap<>(btDevices));
+            }
+          }
+        });
+      } else {
+        Log.w(TAG, "Could not output devices, because the event sink was null");
+      }
+    }
+
+    @Override
+    public void onScanFailed(int errorCode) {
+      Log.e(TAG, "BLE Scan failed with code: " + errorCode);
     }
   };
 
   private void startScan() {
+    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+      Log.w(TAG, "BluetoothAdapter is disabled or null");
+      return;
+    }
+
+    BluetoothLeScanner scanner = bluetoothAdapter.getBluetoothLeScanner();
+    if (scanner == null) {
+      Log.e(TAG, "BluetoothLeScanner is null");
+      return;
+    }
+
     btDevices = new HashMap<>();
     handler.postDelayed(() -> {
       if (scanning) {
-        scanning = false;
-        bluetoothAdapter.stopLeScan(mLeScanCallback);
+        stopScan();
       }
     }, SCAN_PERIOD);
 
     scanning = true;
-    bluetoothAdapter.startLeScan(mLeScanCallback);
+    try {
+      scanner.startScan(scanCallback);
+    } catch (SecurityException e) {
+      Log.e(TAG, "SecurityException while starting scan", e);
+    }
   }
 
   private void stopScan() {
-    bluetoothAdapter.stopLeScan(mLeScanCallback);
+    if (scanning && bluetoothAdapter != null && bluetoothAdapter.isEnabled()) {
+      BluetoothLeScanner scanner = bluetoothAdapter.getBluetoothLeScanner();
+      if (scanner != null) {
+        try {
+          scanner.stopScan(scanCallback);
+        } catch (SecurityException e) {
+          Log.e(TAG, "SecurityException while stopping scan", e);
+        }
+      }
+    }
     scanning = false;
   }
 
@@ -100,7 +141,7 @@ class DeviceScanner extends BluetoothPermissions implements StreamHandler {
   @Override
   protected void afterPermissionsDenied() {
     if (events != null) {
-      events.error(ERROR_NO_PERMISSIONS, "Location permissions are required", null);
+      events.error(ERROR_NO_PERMISSIONS, "Bluetooth and Location permissions are required", null);
       events = null;
     }
   }

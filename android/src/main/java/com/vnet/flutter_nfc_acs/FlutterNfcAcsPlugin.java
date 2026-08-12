@@ -12,9 +12,9 @@ import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.Lifecycle;
-import androidx.lifecycle.LifecycleObserver;
-import androidx.lifecycle.OnLifecycleEvent;
+import androidx.lifecycle.LifecycleOwner;
 
 import com.acs.bluetooth.Acr1255uj1Reader;
 import com.acs.bluetooth.BluetoothReader;
@@ -36,15 +36,12 @@ import static android.content.ContentValues.TAG;
 /**
  * FlutterNfcAcsPlugin
  */
-public class FlutterNfcAcsPlugin extends BluetoothPermissions implements FlutterPlugin, ActivityAware, MethodCallHandler, StreamHandler, LifecycleObserver {
+public class FlutterNfcAcsPlugin extends BluetoothPermissions implements FlutterPlugin, ActivityAware, MethodCallHandler, StreamHandler, DefaultLifecycleObserver {
   // The method channel's commands
   private static final String CONNECT = "CONNECT";
   private static final String DISCONNECT = "DISCONNECT";
 
   // Error codes
-  // TODO: Figure out how to transmit errors that are detected in listeners.
-  // static final String ERROR_NO_BLUETOOTH_MANAGER = "no_bluetooth_manager";
-  // static final String ERROR_GATT_CONNECTION_FAILED = "gatt_connection_failed";
   private static final String ERROR_MISSING_ADDRESS = "missing_address";
   private static final String ERROR_DEVICE_NOT_FOUND = "device_not_found";
   private static final String ERROR_DEVICE_NOT_SUPPORTED = "device_not_supported";
@@ -53,7 +50,6 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
   // Flutter channels
   private MethodChannel channel;
   private EventChannel devicesChannel;
-  // These are hooked up on a successful connection to a device.
   private EventChannel deviceBatteryChannel;
   private EventChannel deviceStatusChannel;
   private EventChannel deviceCardChannel;
@@ -66,11 +62,6 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
   private static final String DISCONNECTING = "DISCONNECTING";
   private static final String UNKNOWN_CONNECTION_STATE = "UNKNOWN_CONNECTION_STATE";
 
-  // Sleep mode options
-  /*private static final byte SLEEP_60_SEC = 0x00;
-  private static final byte SLEEP_90_SEC = 0x01;
-  private static final byte SLEEP_120_SEC = 0x02;
-  private static final byte SLEEP_180_SEC = 0x03;*/
   private static final byte SLEEP_NEVER = 0x04;
 
   // "ACR1255U-J1 Auth" in text;
@@ -83,20 +74,16 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
   private BluetoothReaderGattCallback mGattCallback;
   private Context context;
 
-  // A DeviceScanner scans for bluetooth devices
   private DeviceScanner deviceScanner;
   private BatteryStreamHandler batteryStreamHandler;
   private CardStreamHandler cardStreamHandler;
 
-  // Connection state
   private int mConnectState = BluetoothReader.STATE_DISCONNECTED;
 
-  // Variables for pending permissions
   private MethodCall pendingMethodCall;
   private MethodChannel.Result pendingResult;
   private boolean pendingResultComplete = false;
 
-  // The address is kept in memory in case of life cycle events
   private String address;
 
   @Override
@@ -138,7 +125,7 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
 
   @Override
   protected Activity getActivity() {
-    return activityBinding.getActivity();
+    return activityBinding != null ? activityBinding.getActivity() : null;
   }
 
   @Override
@@ -177,10 +164,10 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
         new Handler(Looper.getMainLooper()).post(() -> result.success(null));
         break;
       default:
+        result.notImplemented();
     }
   }
 
-  // Emits status events on listen
   @Override
   public void onListen(Object arguments, EventChannel.EventSink events) {
     statusEvents = events;
@@ -202,7 +189,7 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
           address = pendingMethodCall.argument("address");
           if (address == null) {
             new Handler(Looper.getMainLooper()).post(() -> {
-              if (pendingMethodCall != null) {
+              if (pendingResult != null) {
                 pendingResult.error(ERROR_MISSING_ADDRESS, "The address argument cannot be null", null);
               }
             });
@@ -211,13 +198,13 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
 
           if (connectToReader()) {
             new Handler(Looper.getMainLooper()).post(() -> {
-              if (pendingMethodCall != null) {
+              if (pendingResult != null) {
                 pendingResult.success(null);
               }
             });
           } else {
             new Handler(Looper.getMainLooper()).post(() -> {
-              if (pendingMethodCall != null) {
+              if (pendingResult != null) {
                 pendingResult.error(ERROR_DEVICE_NOT_FOUND, "The bluetooth device could not be found", null);
               }
             });
@@ -226,7 +213,7 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
         case DISCONNECT:
           disconnectFromReader();
           new Handler(Looper.getMainLooper()).post(() -> {
-            if (pendingMethodCall != null) {
+            if (pendingResult != null) {
               pendingResult.success(null);
             }
           });
@@ -242,7 +229,7 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
     pendingResultComplete = true;
     new Handler(Looper.getMainLooper()).post(() -> {
       if (pendingResult != null) {
-        pendingResult.error(ERROR_NO_PERMISSIONS, "Location permissions are required", null);
+        pendingResult.error(ERROR_NO_PERMISSIONS, "Bluetooth and Location permissions are required", null);
       }
     });
   }
@@ -259,9 +246,12 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
     channel.setMethodCallHandler(this);
     activityBinding.addRequestPermissionsResultListener(this);
 
-    deviceScanner = new DeviceScanner(bluetoothManager.getAdapter(), activityBinding.getActivity());
-    devicesChannel.setStreamHandler(deviceScanner);
-    activityBinding.addRequestPermissionsResultListener(deviceScanner);
+    BluetoothAdapter adapter = bluetoothManager.getAdapter();
+    if (adapter != null) {
+      deviceScanner = new DeviceScanner(adapter, activityBinding.getActivity());
+      devicesChannel.setStreamHandler(deviceScanner);
+      activityBinding.addRequestPermissionsResultListener(deviceScanner);
+    }
 
     deviceStatusChannel.setStreamHandler(this);
 
@@ -279,25 +269,31 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
     channel.setMethodCallHandler(null);
 
     deviceCardChannel.setStreamHandler(null);
-    cardStreamHandler.dispose();
+    if (cardStreamHandler != null) {
+      cardStreamHandler.dispose();
+    }
 
     deviceBatteryChannel.setStreamHandler(null);
-    batteryStreamHandler.dispose();
+    if (batteryStreamHandler != null) {
+      batteryStreamHandler.dispose();
+    }
 
     deviceStatusChannel.setStreamHandler(null);
 
-    activityBinding.removeRequestPermissionsResultListener(deviceScanner);
-    activityBinding.removeRequestPermissionsResultListener(this);
+    if (activityBinding != null) {
+      if (deviceScanner != null) {
+        activityBinding.removeRequestPermissionsResultListener(deviceScanner);
+      }
+      activityBinding.removeRequestPermissionsResultListener(this);
+    }
 
-    mGattCallback.setOnConnectionStateChangeListener(null);
-    mGattCallback = null;
+    if (mGattCallback != null) {
+      mGattCallback.setOnConnectionStateChangeListener(null);
+      mGattCallback = null;
+    }
   }
 
-  /**
-   * The reader manager is responsible for setting up all the event streams when a compatible device is detected.
-   */
   private void setupReaderManager() {
-    // When a reader is detected.
     mBluetoothReaderManager = new BluetoothReaderManager();
     mBluetoothReaderManager.setOnReaderDetectionListener(reader -> {
       if (!(reader instanceof Acr1255uj1Reader)) {
@@ -322,7 +318,6 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
         }
       });
 
-      // Enables the reader's battery level, card status and response notifications.
       if (!reader.enableNotification(true)) {
         Log.w(TAG, "ENABLE NOTIFICATIONS NOT READY!");
       }
@@ -334,7 +329,6 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
       if (errorCode == BluetoothReader.ERROR_SUCCESS) {
         Log.i(TAG, "Authentication successful");
 
-        // When a compatible reader is detected, we hook up the event streams.
         cardStreamHandler.setReader(r);
 
         reader.setOnEscapeResponseAvailableListener((re, response, code) -> {
@@ -354,11 +348,7 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
     });
   }
 
-  /**
-   * Monitors the connection, and if one is established, detects the reader type in the other end.
-   */
   private void setupGattCallback() {
-    // When a connection to GATT is established.
     mGattCallback = new BluetoothReaderGattCallback();
     mGattCallback.setOnConnectionStateChangeListener((gatt, state, newState) -> {
       if (state != BluetoothGatt.GATT_SUCCESS) {
@@ -377,16 +367,22 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
       if (newState == BluetoothProfile.STATE_CONNECTED) {
         mBluetoothReaderManager.detectReader(gatt, mGattCallback);
       } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-        mBluetoothGatt.disconnect();
-        mBluetoothGatt.close();
-        mBluetoothGatt = null;
+        if (mBluetoothGatt != null) {
+          try {
+            mBluetoothGatt.disconnect();
+            mBluetoothGatt.close();
+          } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException while closing GATT", e);
+          }
+          mBluetoothGatt = null;
+        }
         setConnectionState(BluetoothReader.STATE_DISCONNECTED);
       }
     });
   }
 
-  @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
-  public void connectIfDisconnected() {
+  @Override
+  public void onResume(@NonNull LifecycleOwner owner) {
     if (address != null && mConnectState == BluetoothReader.STATE_DISCONNECTED) {
       connectToReader();
     }
@@ -399,44 +395,51 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
 
     if (bluetoothManager == null) {
       setConnectionState(BluetoothReader.STATE_DISCONNECTED);
-      Log.e(TAG, "BluetoothManager was null - cannot connect. The device might not have a bluetooth adapter.");
+      Log.e(TAG, "BluetoothManager was null - cannot connect.");
       return false;
     }
 
     BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
-    if (!bluetoothAdapter.isEnabled()) {
+    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
       Log.w(TAG, "Bluetooth was not enabled!");
       return false;
     }
 
     final BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
-
     if (device == null) {
       Log.w(TAG, "Device not found. Unable to connect.");
       return false;
     }
 
     if (mBluetoothGatt != null) {
-      mBluetoothGatt.disconnect();
-      mBluetoothGatt.close();
+      try {
+        mBluetoothGatt.disconnect();
+        mBluetoothGatt.close();
+      } catch (SecurityException e) {
+        Log.e(TAG, "SecurityException while disconnecting previous GATT", e);
+      }
     }
 
-    // Connect to the GATT server.
     setConnectionState(BluetoothReader.STATE_CONNECTING);
-    mBluetoothGatt = device.connectGatt(context, false, mGattCallback);
+    try {
+      mBluetoothGatt = device.connectGatt(context, false, mGattCallback);
+    } catch (SecurityException e) {
+      Log.e(TAG, "SecurityException connecting to GATT", e);
+      setConnectionState(BluetoothReader.STATE_DISCONNECTED);
+      return false;
+    }
 
     return true;
   }
 
-  /**
-   * Disconnects the reader and releases resources that are dependant on being connected, which are irrelevant when disconnected.
-   */
   private void disconnectFromReader() {
-    // Close existing GATT connection
     if (mBluetoothGatt != null) {
-      mBluetoothGatt.disconnect();
+      try {
+        mBluetoothGatt.disconnect();
+      } catch (SecurityException e) {
+        Log.e(TAG, "SecurityException on disconnect", e);
+      }
     }
-
     setConnectionState(BluetoothReader.STATE_DISCONNECTED);
   }
 
@@ -446,41 +449,30 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
   }
 
   private void notifyStatusListeners() {
-    // We can't send a status back if no one is listening for it.
     switch (mConnectState) {
       case BluetoothReader.STATE_CONNECTED:
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (statusEvents != null) {
-            statusEvents.success(CONNECTED);
-          }
+          if (statusEvents != null) statusEvents.success(CONNECTED);
         });
         break;
       case BluetoothReader.STATE_CONNECTING:
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (statusEvents != null) {
-            statusEvents.success(CONNECTING);
-          }
+          if (statusEvents != null) statusEvents.success(CONNECTING);
         });
         break;
       case BluetoothReader.STATE_DISCONNECTED:
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (statusEvents != null) {
-            statusEvents.success(DISCONNECTED);
-          }
+          if (statusEvents != null) statusEvents.success(DISCONNECTED);
         });
         break;
       case BluetoothReader.STATE_DISCONNECTING:
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (statusEvents != null) {
-            statusEvents.success(DISCONNECTING);
-          }
+          if (statusEvents != null) statusEvents.success(DISCONNECTING);
         });
         break;
       default:
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (statusEvents != null) {
-            statusEvents.success(UNKNOWN_CONNECTION_STATE);
-          }
+          if (statusEvents != null) statusEvents.success(UNKNOWN_CONNECTION_STATE);
         });
     }
   }

@@ -8,7 +8,7 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "flutter-nfc-acs2",
+            name: "flutter_nfc_acs2",
             targets: ["flutter_nfc_acs2"]
         )
     ],
@@ -17,7 +17,8 @@ let package = Package(
         .target(
             name: "flutter_nfc_acs2",
             dependencies: [],
-            path: "Classes"
+            path: "Classes",
+            publicHeadersPath: "."
         )
     ]
 )

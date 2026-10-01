@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import CoreBluetooth
 
+@objc(FlutterNfcAcsPlugin)
 public class FlutterNfcAcsPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate, CBPeripheralDelegate, FlutterStreamHandler {
 
     private static let CONNECT = "CONNECT"

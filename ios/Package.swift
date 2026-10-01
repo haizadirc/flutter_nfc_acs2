@@ -18,7 +18,6 @@ let package = Package(
             name: "flutter_nfc_acs2",
             dependencies: [],
             path: "Classes",
-            publicHeadersPath: "."
         )
     ]
 )

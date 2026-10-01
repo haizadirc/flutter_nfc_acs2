@@ -14,7 +14,6 @@ A Flutter plugin for communicating with Bluetooth ACS ACR NFC card readers.
   s.author           = { 'Nur Hidayatul Rohani MOKTAR' => 'info@example.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
   s.swift_version = '5.0'

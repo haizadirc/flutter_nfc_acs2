@@ -94,11 +94,25 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
     deviceBatteryChannel = new EventChannel(flutterPluginBinding.getBinaryMessenger(), "flutter.vnet.com/nfc/acs/device/battery");
     deviceStatusChannel = new EventChannel(flutterPluginBinding.getBinaryMessenger(), "flutter.vnet.com/nfc/acs/device/status");
     deviceCardChannel = new EventChannel(flutterPluginBinding.getBinaryMessenger(), "flutter.vnet.com/nfc/acs/device/card");
+
+    channel.setMethodCallHandler(this);
+    deviceStatusChannel.setStreamHandler(this);
+
+    if (cardStreamHandler == null) cardStreamHandler = new CardStreamHandler();
+    deviceCardChannel.setStreamHandler(cardStreamHandler);
+
+    if (batteryStreamHandler == null) batteryStreamHandler = new BatteryStreamHandler();
+    deviceBatteryChannel.setStreamHandler(batteryStreamHandler);
   }
 
   @Override
   public void onDetachedFromEngine(final @NonNull FlutterPluginBinding binding) {
     context = null;
+    if (channel != null) channel.setMethodCallHandler(null);
+    if (devicesChannel != null) devicesChannel.setStreamHandler(null);
+    if (deviceStatusChannel != null) deviceStatusChannel.setStreamHandler(null);
+    if (deviceBatteryChannel != null) deviceBatteryChannel.setStreamHandler(null);
+    if (deviceCardChannel != null) deviceCardChannel.setStreamHandler(null);
   }
 
   @Override
@@ -265,20 +279,15 @@ public class FlutterNfcAcsPlugin extends BluetoothPermissions implements Flutter
   private void dispose() {
     disconnectFromReader();
 
-    devicesChannel.setStreamHandler(null);
-    channel.setMethodCallHandler(null);
+    statusEvents = null;
 
-    deviceCardChannel.setStreamHandler(null);
     if (cardStreamHandler != null) {
       cardStreamHandler.dispose();
     }
 
-    deviceBatteryChannel.setStreamHandler(null);
     if (batteryStreamHandler != null) {
       batteryStreamHandler.dispose();
     }
-
-    deviceStatusChannel.setStreamHandler(null);
 
     if (activityBinding != null) {
       if (deviceScanner != null) {

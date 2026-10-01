@@ -64,11 +64,12 @@ class DeviceScanner extends BluetoothPermissions implements StreamHandler {
 
       if (events != null) {
         new Handler(Looper.getMainLooper()).post(() -> {
+          final EventSink currentEvents = events;
           if (btDevices != null && address != null) {
             boolean isNew = !btDevices.containsKey(address);
             btDevices.put(address, name != null ? name : "Unknown Device");
-            if (isNew && events != null) {
-              events.success(new HashMap<>(btDevices));
+            if (isNew && currentEvents != null) {
+              currentEvents.success(new HashMap<>(btDevices));
             }
           }
         });
